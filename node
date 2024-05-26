@@ -2,12 +2,30 @@
 
 # Access cluster nodes for serial I/O or power cycle
 
+# This program is used with the Cluster controller board to control up to 8 Rpi cluster nodes
+# Version V3 - for use with V3 board (also works with V2, but power monitor unavailable)
+#
+# Board V1 used 4051 analog switches to route serial I/O and power outs.
+# Problems were: no latching power enables, so could only power cycle one node, momentarily
+#		 Not fast enough to sustain serial at 115200baud reliably
+
+# Board V2 used 74HC138/74HC251 for serial I/O, and 74HC259 for power enables
+# fixed serial speed issue and delivered power enable persistance
+# Problem: no power state monitoring for nodes (is the node on or off?)
+# 
+# Board V3 added a second 74HC251 for direct monitoring of power enable lines.
+#
+
 # A 74HC138 (for TX) and 74HC251 (for RX) (de)multiplexers for fanout of TX and RX UART signals
 # from Pi1 to nodes 2-8 (pi2 has fixed ttyAMA2 - ttyAMA10 to pi1)
 # One x 74HC259 addressable latch, driving the Enable lines of the DC/DC
 # converters powering the Pi boards. CLK and DATA lines on GPIO 17 and 18
 # GPIO pins 2, 3 and 4 are address lines 0, 1 and 2 for above signals
 # Serial1 pins from pi1 via (de)mulitplexers, to serial0 of cluster nodes
+
+# (Board V3) Addition of power monitor using a second 74HC251 connected to the power enable
+# outputs from the 74HC259, so as to sample the current power status of nodes.
+# Output of power monitor is GPIO 27 (was serial enable in previous board versions)
 
 # GPIO 2,3,4 are address select pins for I/O multiplexers
 # pin 2 = bit 0
@@ -17,7 +35,7 @@
 # GPIO 18 is power pin -  active HIGH = POWEROFF!
 # Power off signal is latched by GPIO 17 CLK pin pulsing low (active LOW)
 # GPIO 17 is power latch Clk pin - high latches value, low enables Data to selected output
-# GPIO 27 WAS serial enable, but not necessary, so now spare (for future power read)
+# GPIO 27 WAS serial enable, but now is INPUT from power monitor mpx.
 
 serialport="/dev/ttyAMA0"	        # outgoing UART into demultiplexer board
 baudrate=115200				# Baud rate set for node serial ports
@@ -31,6 +49,7 @@ setup () {	# Set up GPIO pins if not already done
 		echo "Initialising GPIO pins"	# echo acts as time delay for enable pin settling
 		pinctrl set 2,3,4,18 op dl	# set Address and PowerOn pins to output and LOW
 			# default pins to 0, for address 000 (pi1) and power 0 (ON) enable OFF
+		pinctrl set 27 ip pd		# GPIO27 is input (with pull-down)
 		echo "GPIO pins initialised"
 	fi
 }
@@ -55,15 +74,14 @@ nodenum() {
 }
 
 # Print out current state of GPIO pins
-nodestatus () {
+nodegpio () {
 	if [[ $(pinctrl get 17) == *op* ]]
 	then
-		echo "node select pins"
+		echo "node select pins:"
 		pinctrl get 2,3,4 | cut -d ' ' -f 2,7
 		nodenum
-		echo "Selected node:" $selectednode	# global variable retains selected node
-		echo
-		echo "Power Enable pins"
+		echo "Selected node =" $selectednode	# global variable retains selected node
+		echo "Power Enable pins:"
 		pinctrl get 17,18 | cut -d ' ' -f 1,6
 		if [[ $(pinctrl get 17) == *hi* ]]
 		then
@@ -78,6 +96,7 @@ nodestatus () {
 		else
 			echo "Power Data Low (PowerOn)"
 		fi
+		echo
 	else
 		echo "GPIO pins not yet initialised"
 		echo -n "Initialise GPIO pins [y/N]? "
@@ -85,11 +104,32 @@ nodestatus () {
 		if [[ $reply == "Y" || $reply == "y" ]]
 		then
 			setup
-			nodestatus
+			nodegpio
 		else
 			echo "GPIO pins not initialised"
 		fi
 	fi
+}
+
+# Print currently selected node and power states for all nodes
+nodestatus () {
+	nodenum
+	currentnode=$selectednode		# save current selection for restore below
+	echo
+	for i in 1 2 3 4 5 6 7 8
+	do
+		nodeselect $i 
+		echo -n "node $selectednode POWER is "
+		if [[ $(pinctrl get 27) == *hi* ]]
+		then
+			echo "OFF!"
+		else
+			echo "ON"
+		fi
+	done
+	nodeselect $currentnode			# restore previously selected node
+	echo "Currently selected node =" $selectednode
+	echo
 }
 
 # Set GPIO address pins of multiplexers to specified node
@@ -97,35 +137,27 @@ nodeselect () {
 	pinctrl set 17 dh		# ensure power gate is DISABLED (high)
 	pinctrl set 18 dl		# ensure power D pin is in ON state (low)
 	case $1 in
-	1)	echo "Selecting node 1"
-		pinctrl set 2,3,4 dl
+	1)	pinctrl set 2,3,4 dl
 		;;
-	2)	echo "Selecting node 2"
-		pinctrl set 2 dh
+	2)	pinctrl set 2 dh
 		pinctrl set 3,4 dl
 		;;
-	3)	echo "Selecting node 3"
-		pinctrl set 2,4 dl
+	3)	pinctrl set 2,4 dl
 		pinctrl set 3 dh
 		;;
-	4)	echo "Selecting node 4"
-		pinctrl set 2,3 dh
+	4)	pinctrl set 2,3 dh
 		pinctrl set 4 dl
 		;;
-	5)	echo "Selecting node 5"
-		pinctrl set 2,3 dl
+	5)	pinctrl set 2,3 dl
 		pinctrl set 4 dh
 		;;
-	6)	echo "Selecting node 6"
-		pinctrl set 3 dl
+	6)	pinctrl set 3 dl
 		pinctrl set 2,4 dh
 		;;
-	7)	echo "Selecting node 7"
-		pinctrl set 2 dl
+	7)	pinctrl set 2 dl
 		pinctrl set 3,4 dh
 		;;
-	8)	echo "Selecting node 8"
-		pinctrl set 2,3,4 dh
+	8)	pinctrl set 2,3,4 dh
 		;;
 	*)	echo "Unknown node: $1"
 		usage
@@ -138,6 +170,7 @@ nodeselect () {
 usage () {
 	echo "Usage: $scriptname <command> [<node number>]"
 	echo "Commands:
+	gpio
 	status
 	select <n>
 	connect <n>
@@ -173,12 +206,17 @@ scriptname=`basename $0`
 
 
 case $1 in
+"gpio")		# Print current state of GPIO pins
+	nodegpio
+	;;
 "status")	# Print status of mux GPU pins
+	setup	# Set up GPIO pins if not already done
 	nodestatus
 	;;
 "select")	# Set GPIO pins to select specified node
 	setup	# Set up GPIO pins if not already done
 	nodeselect $2
+	echo Selected node $2
 	;;
 "connect")	# connect to serial port
 	setup	# Set up GPIO pins if not already done
