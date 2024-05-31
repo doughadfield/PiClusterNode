@@ -159,7 +159,7 @@ nodeselect () {
 		;;
 	8)	pinctrl set 2,3,4 dh
 		;;
-	*)	echo "Unknown node: $1"
+	*)	echo -e "\nInvalid node: \"$1\""
 		usage
 		exit
 		;;
@@ -168,7 +168,7 @@ nodeselect () {
 }
 
 usage () {
-	echo "Usage: $scriptname <command> [<node number>]"
+	echo -e "\nUsage: $scriptname <command> [<node number>]"
 	echo "Commands:
 	gpio
 	status
@@ -182,80 +182,90 @@ usage () {
 }
 
 setpoweroff () {
-	pinctrl set 17 dh			# ensure Clk disabled to start with
-	pinctrl set 18 dh			# set power Data pin to POWER OFF
-	pinctrl set 17 dl			# set power Clk pin to Enable
-	pinctrl set 17 dh			# set power Clk pin to Latch
-	pinctrl set 18 dl			# leave power Data pin in ON state
-}
-setpoweron () {
-	pinctrl set 18 dl			# set power pin to POWER ON
-	pinctrl set 17 dl			# set power Clk pin to Enable
-	pinctrl set 17 dh			# set power Clk pin to Latch
+	if [[ $(pinctrl get 27) == *hi* ]]		# test actual status of power enable line
+	then
+		echo "Node $selectednode is already powered OFF"
+	else
+		echo -n "Press Return to power OFF node $selectednode "
+		read input
+		pinctrl set 17 dh			# ensure Clk disabled to start with
+		pinctrl set 18 dh			# set power Data pin to POWER OFF
+		pinctrl set 17 dl			# set power Clk pin to Enable
+		pinctrl set 17 dh			# set power Clk pin to Latch
+		pinctrl set 18 dl			# leave power Data pin in ON state
+		echo "Node $selectednode powered OFF"
+	fi
 }
 
-checkarg () {	# Check argument
-	if [[ $1 -lt 1 || $1 -gt 8 ]]
+setpoweron () {
+	if [[ $(pinctrl get 27) == *hi* ]]		# test actual status of power enable line
 	then
-		usage
-		exit
+		echo -n "Press Return to power ON node $selectednode and connect to serial "
+		read input
+		pinctrl set 18 dl			# set power pin to POWER ON
+		pinctrl set 17 dl			# set power Clk pin to Enable
+		pinctrl set 17 dh			# set power Clk pin to Latch
+		sleep 2
+		minicom -D $serialport -b $baudrate
+	else
+		echo "Node $selectednode is already powered ON"
 	fi
+}
+
+checkarg () {	# Check arguments and set selected node
+	case $# in
+		0)				# no arguments passed
+			usage
+			exit
+			;;
+		1)				# just the command given
+			nodenum			# set "selectednode" from gpio pins
+			;;
+		2)				# node number given as argument
+			nodeselect $2		# select node from passed argument
+			;;
+		*)
+			echo -e "\nToo many arguments"
+			usage
+			exit
+			;;
+	esac
 }
 
 scriptname=`basename $0`
 
+setup						# ensure GPIO pins are initialised
+checkarg $@					# test for correct args and set "selectednode"
 
 case $1 in
-"gpio")		# Print current state of GPIO pins
+"gpio")						# Print current state of GPIO pins
 	nodegpio
 	;;
-"status")	# Print status of mux GPU pins
-	setup	# Set up GPIO pins if not already done
+"status")					# Print status of mux GPU pins
 	nodestatus
 	;;
-"select")	# Set GPIO pins to select specified node
-	setup	# Set up GPIO pins if not already done
-	nodeselect $2
-	echo Selected node $2
+"select")					# Set GPIO pins to select specified node
+	echo Selected node: $selectednode
 	;;
-"connect")	# connect to serial port
-	setup	# Set up GPIO pins if not already done
-	nodeselect $2
+"connect")					# connect to serial port
 	minicom -D $serialport -b $baudrate
 	;;
-"powercycle")	# Power cycle node - poweroff is momentary, until RETURN pressed
-	setup	# Set up GPIO pins if not already done
-	nodeselect $2
-	echo -n "Press Return to power cycle node $2 "
-	read input
-	echo "Powering off node $2"
+"powercycle")					# Power cycle node 
 	setpoweroff
-	sleep 2
-	echo -n "Node $2 powered OFF - Press Return to power on and connect to serial "
-	read input
-	setpoweron
 	sleep 1
-	minicom -D $serialport -b $baudrate
-	;;
-"poweroff")	# Power off node and exit (power state latched persistently)
-	setup	# Set up GPIO pins if not already done
-	nodeselect $2
-	echo -n "Press Return to power OFF node $2 "
-	read input
-	echo "Powering off node $2"
-	setpoweroff
-	echo "Node $2 powered OFF"
-	;;
-"poweron")	# Power on specified node
-	nodeselect $2
-	echo -n "Press Return to power ON node $2 and connect to serial "
-	read input
 	setpoweron
-	sleep 2
-	minicom -D $serialport -b $baudrate
 	;;
-
-*)		# Default action - print usage
+"poweroff")					# Power off node and exit (power state latched persistently)
+	setpoweroff
+	;;
+"poweron")					# Power on specified node
+	setpoweron
+	;;
+"help")
+	usage
+	;;
+*)						# Default action - print usage
+	echo -e "\nUnknown command: \"$1\""
 	usage
 	;;
 esac
