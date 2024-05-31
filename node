@@ -3,17 +3,14 @@
 # Access cluster nodes for serial I/O or power cycle
 
 # This program is used with the Cluster controller board to control up to 8 Rpi cluster nodes
-# Version V3 - for use with V3 board (also works with V2, but power monitor unavailable)
+# Version V2 - for use with V2 board (also works with V1, but power monitor unavailable)
 #
-# Board V1 used 4051 analog switches to route serial I/O and power outs.
-# Problems were: no latching power enables, so could only power cycle one node, momentarily
-#		 Not fast enough to sustain serial at 115200baud reliably
 
-# Board V2 used 74HC138/74HC251 for serial I/O, and 74HC259 for power enables
+# Board V1 used 74HC138/74HC251 for serial I/O, and 74HC259 for power enables
 # fixed serial speed issue and delivered power enable persistance
 # Problem: no power state monitoring for nodes (is the node on or off?)
 # 
-# Board V3 added a second 74HC251 for direct monitoring of power enable lines.
+# Board V2 added a second 74HC251 for direct monitoring of power enable lines.
 #
 
 # A 74HC138 (for TX) and 74HC251 (for RX) (de)multiplexers for fanout of TX and RX UART signals
@@ -23,7 +20,7 @@
 # GPIO pins 2, 3 and 4 are address lines 0, 1 and 2 for above signals
 # Serial1 pins from pi1 via (de)mulitplexers, to serial0 of cluster nodes
 
-# (Board V3) Addition of power monitor using a second 74HC251 connected to the power enable
+# (Board V2) Addition of power monitor using a second 74HC251 connected to the power enable
 # outputs from the 74HC259, so as to sample the current power status of nodes.
 # Output of power monitor is GPIO 27 (was serial enable in previous board versions)
 
@@ -35,28 +32,31 @@
 # GPIO 18 is power pin -  active HIGH = POWEROFF!
 # Power off signal is latched by GPIO 17 CLK pin pulsing low (active LOW)
 # GPIO 17 is power latch Clk pin - high latches value, low enables Data to selected output
-# GPIO 27 WAS serial enable, but now is INPUT from power monitor mpx.
+# GPIO 27 WAS serial enable (in V1), but now is INPUT from power monitor mpx.
+
 
 serialport="/dev/ttyAMA0"	        # outgoing UART into demultiplexer board
 baudrate=115200				# Baud rate set for node serial ports
 
 # Setup function configures GPIO pins to drive multiplexers
 # Initialises GPIO pins to node 0 (pi1) selected, with power ON and Clk DISABLED
+# 
 setup () {	# Set up GPIO pins if not already done
 	if [[ $(pinctrl get 17) != *op* ]]
 	then
-		pinctrl set 17 op dh		# set Power Clk pin to output and HIGH (disable)
-		echo "Initialising GPIO pins"	# echo acts as time delay for enable pin settling
-		pinctrl set 2,3,4,18 op dl	# set Address and PowerOn pins to output and LOW
-			# default pins to 0, for address 000 (pi1) and power 0 (ON) enable OFF
-		pinctrl set 27 ip pd		# GPIO27 is input (with pull-down)
+		pinctrl set 17 op dh			# set Power Clk pin to output and HIGH (disable)
+		echo "Initialising GPIO pins"		# echo acts as time delay for enable pin settling
+		pinctrl set 2,3,4,18 op dl		# set Address and PowerOn pins to output and LOW
+			# default pins to 0, for address 000 (pi1) and power 0 (ON)
+		pinctrl set 27 ip pd			# GPIO27 is input (with pull-down)
 		echo "GPIO pins initialised"
 	fi
 }
 
 # Get selected node number from select pins and set global variable "selectednode"
+#
 nodenum() {
-	selectednode=1						# count from 1 (1-8)
+	selectednode=1					# start at count of 1
 	if [[ $(pinctrl get 2) == *hi* ]]
 	then
 		selectednode=$((selectednode + 1))
@@ -74,6 +74,7 @@ nodenum() {
 }
 
 # Print out current state of GPIO pins
+#
 nodegpio () {
 	if [[ $(pinctrl get 17) == *op* ]]
 	then
@@ -112,6 +113,7 @@ nodegpio () {
 }
 
 # Print currently selected node and power states for all nodes
+#
 nodestatus () {
 	nodenum
 	currentnode=$selectednode		# save current selection for restore below
@@ -133,9 +135,10 @@ nodestatus () {
 }
 
 # Set GPIO address pins of multiplexers to specified node
+#
 nodeselect () {
-	pinctrl set 17 dh		# ensure power gate is DISABLED (high)
-	pinctrl set 18 dl		# ensure power D pin is in ON state (low)
+	pinctrl set 17 dh			# ensure power gate is DISABLED (high)
+	pinctrl set 18 dl			# ensure power D pin is in ON state (low)
 	case $1 in
 	1)	pinctrl set 2,3,4 dl
 		;;
@@ -164,9 +167,11 @@ nodeselect () {
 		exit
 		;;
 	esac
-	nodenum			# update global node number with new selection
+	nodenum					# update global node number with new selection
 }
 
+# Print usage string
+#
 usage () {
 	echo -e "\nUsage: $scriptname <command> [<node number>]"
 	echo "Commands:
@@ -181,30 +186,34 @@ usage () {
 	echo "<n> = Node number: 1-8"
 }
 
+# Power off selected node
+#
 setpoweroff () {
-	if [[ $(pinctrl get 27) == *hi* ]]		# test actual status of power enable line
+	if [[ $(pinctrl get 27) == *hi* ]]	# test actual status of power enable line
 	then
 		echo "Node $selectednode is already powered OFF"
 	else
 		echo -n "Press Return to power OFF node $selectednode "
 		read input
-		pinctrl set 17 dh			# ensure Clk disabled to start with
-		pinctrl set 18 dh			# set power Data pin to POWER OFF
-		pinctrl set 17 dl			# set power Clk pin to Enable
-		pinctrl set 17 dh			# set power Clk pin to Latch
-		pinctrl set 18 dl			# leave power Data pin in ON state
+		pinctrl set 17 dh		# ensure Clk disabled to start with
+		pinctrl set 18 dh		# set power Data pin to POWER OFF
+		pinctrl set 17 dl		# set power Clk pin to Enable
+		pinctrl set 17 dh		# set power Clk pin to Latch
+		pinctrl set 18 dl		# leave power Data pin in ON state
 		echo "Node $selectednode powered OFF"
 	fi
 }
 
+# Power on selected node
+#
 setpoweron () {
-	if [[ $(pinctrl get 27) == *hi* ]]		# test actual status of power enable line
+	if [[ $(pinctrl get 27) == *hi* ]]	# test actual status of power enable line
 	then
 		echo -n "Press Return to power ON node $selectednode and connect to serial "
 		read input
-		pinctrl set 18 dl			# set power pin to POWER ON
-		pinctrl set 17 dl			# set power Clk pin to Enable
-		pinctrl set 17 dh			# set power Clk pin to Latch
+		pinctrl set 18 dl		# set power pin to POWER ON
+		pinctrl set 17 dl		# set power Clk pin to Enable
+		pinctrl set 17 dh		# set power Clk pin to Latch
 		sleep 2
 		minicom -D $serialport -b $baudrate
 	else
@@ -212,30 +221,31 @@ setpoweron () {
 	fi
 }
 
-checkarg () {	# Check arguments and set selected node
-	case $# in
-		0)				# no arguments passed
-			usage
-			exit
-			;;
-		1)				# just the command given
-			nodenum			# set "selectednode" from gpio pins
-			;;
-		2)				# node number given as argument
-			nodeselect $2		# select node from passed argument
-			;;
-		*)
-			echo -e "\nToo many arguments"
-			usage
-			exit
-			;;
-	esac
-}
 
-scriptname=`basename $0`
+#
+# Program proper starts here:
+#
 
+scriptname=`basename $0`			# needed for "usage" function
 setup						# ensure GPIO pins are initialised
-checkarg $@					# test for correct args and set "selectednode"
+
+case $# in
+	0)					# no arguments passed
+		usage
+		exit
+		;;
+	1)					# just the command given
+		nodenum				# set "selectednode" from current state of gpio pins
+		;;
+	2)					# node number given as argument
+		nodeselect $2			# select node from passed argument
+		;;
+	*)
+		echo -e "\nToo many arguments"
+		usage
+		exit
+		;;
+esac
 
 case $1 in
 "gpio")						# Print current state of GPIO pins
