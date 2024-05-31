@@ -122,7 +122,7 @@ nodestatus () {
 		echo -n "node $selectednode POWER is "
 		if [[ $(pinctrl get 27) == *hi* ]]
 		then
-			echo "OFF!"
+			echo "OFF"
 		else
 			echo "ON"
 		fi
@@ -230,7 +230,7 @@ case $1 in
 	read input
 	echo "Powering off node $2"
 	setpoweroff
-	sleep 1
+	sleep 2
 	echo -n "Node $2 powered OFF - Press Return to power on and connect to serial "
 	read input
 	setpoweron
@@ -251,7 +251,7 @@ case $1 in
 	echo -n "Press Return to power ON node $2 and connect to serial "
 	read input
 	setpoweron
-	sleep 1
+	sleep 2
 	minicom -D $serialport -b $baudrate
 	;;
 
