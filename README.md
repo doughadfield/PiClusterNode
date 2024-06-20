@@ -4,6 +4,7 @@ Raspberry Pi Cluster node controller
 Access cluster nodes for serial I/O or power cycle
 
 This program is used with my Cluster controller board to control up to 8 Rpi cluster nodes
+
 For use with Version 2 board (also works with V1, but power monitor unavailable)
 
 Board V1 used 74HC138/74HC251 for serial I/O, and 74HC259 for power enables
