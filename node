@@ -37,6 +37,7 @@
 
 serialport="/dev/ttyAMA0"	        # outgoing UART into demultiplexer board
 baudrate=115200				# Baud rate set for node serial ports
+interactive=1				# Interactive flag for power commands
 
 # Setup function configures GPIO pins to drive multiplexers
 # Initialises GPIO pins to node 0 (pi1) selected, with power ON and Clk DISABLED
@@ -184,6 +185,8 @@ usage () {
 	powercycle <n>"
 
 	echo "<n> = Node number: 1-8"
+	echo "if <n> = \"all\" execute command on all nodes"
+	echo
 }
 
 # Power off selected node
@@ -193,8 +196,13 @@ setpoweroff () {
 	then
 		echo "Node $selectednode is already powered OFF"
 	else
-		echo -n "Press Return to power OFF node $selectednode "
-		read input
+		if [[ $interactive == 1 ]]
+		then
+			echo -n "Press Return to power OFF node $selectednode "
+			read input
+		else
+			sleep 1
+		fi
 		pinctrl set 17 dh		# ensure Clk disabled to start with
 		pinctrl set 18 dh		# set power Data pin to POWER OFF
 		pinctrl set 17 dl		# set power Clk pin to Enable
@@ -209,16 +217,64 @@ setpoweroff () {
 setpoweron () {
 	if [[ $(pinctrl get 27) == *hi* ]]	# test actual status of power enable line
 	then
-		echo -n "Press Return to power ON node $selectednode and connect to serial "
-		read input
+		if [[ $interactive == 1 ]]
+		then
+			echo -n "Press Return to power ON node $selectednode and connect to serial "
+			read input
+		else
+			echo "Powering on node $selectednode"
+		fi
 		pinctrl set 18 dl		# set power pin to POWER ON
 		pinctrl set 17 dl		# set power Clk pin to Enable
 		pinctrl set 17 dh		# set power Clk pin to Latch
-		sleep 2
-		minicom -D $serialport -b $baudrate
+		sleep 1
+		if [[ $interactive == 1 ]]
+		then
+			sleep 1			# needed for pi firmware baud rate stability
+			minicom -D $serialport -b $baudrate
+		fi
 	else
 		echo "Node $selectednode is already powered ON"
 	fi
+}
+
+
+# Execute command in first argument
+#
+
+execute() {
+	case $1 in
+	"gpio")					# Print current state of GPIO pins
+		nodegpio
+		;;
+	"status")				# Print status of mux GPU pins
+		nodestatus
+		;;
+	"select")				# Set GPIO pins to select specified node
+		echo Selected node: $selectednode
+		;;
+	"connect")				# connect to serial port
+		minicom -D $serialport -b $baudrate
+		;;
+	"powercycle")				# Power cycle node 
+		setpoweroff
+		sleep 1
+		setpoweron
+		;;
+	"poweroff")				# Power off node and exit (power state latched persistently)
+		setpoweroff
+		;;
+	"poweron")				# Power on specified node
+		setpoweron
+		;;
+	"help")
+		usage
+		;;
+	*)					# Default action - print usage
+		echo -e "\nUnknown command: \"$1\""
+		usage
+		;;
+	esac
 }
 
 
@@ -238,7 +294,18 @@ case $# in
 		nodenum				# set "selectednode" from current state of gpio pins
 		;;
 	2)					# node number given as argument
-		nodeselect $2			# select node from passed argument
+		if [[ $2 == "all" ]]
+		then
+			interactive=0		# turn off interactive for power commands
+			for i in 1 2 3 4 5 6 7 8	# execute command for every node
+			do
+				nodeselect $i
+				execute $1 
+			done
+			exit			# exit after executing for all nodes
+		else
+			nodeselect $2		# select node from passed argument
+		fi
 		;;
 	*)
 		echo -e "\nToo many arguments"
@@ -247,36 +314,5 @@ case $# in
 		;;
 esac
 
-case $1 in
-"gpio")						# Print current state of GPIO pins
-	nodegpio
-	;;
-"status")					# Print status of mux GPU pins
-	nodestatus
-	;;
-"select")					# Set GPIO pins to select specified node
-	echo Selected node: $selectednode
-	;;
-"connect")					# connect to serial port
-	minicom -D $serialport -b $baudrate
-	;;
-"powercycle")					# Power cycle node 
-	setpoweroff
-	sleep 1
-	setpoweron
-	;;
-"poweroff")					# Power off node and exit (power state latched persistently)
-	setpoweroff
-	;;
-"poweron")					# Power on specified node
-	setpoweron
-	;;
-"help")
-	usage
-	;;
-*)						# Default action - print usage
-	echo -e "\nUnknown command: \"$1\""
-	usage
-	;;
-esac
+execute $1					# now execute the command passed as arg 1
 
