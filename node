@@ -35,9 +35,9 @@
 # GPIO 27 WAS serial enable (in V1), but now is INPUT from power monitor mpx.
 
 
-serialport="/dev/ttyAMA0"	        # outgoing UART into demultiplexer board
-baudrate=115200				# Baud rate set for node serial ports
-interactive=1				# Interactive flag for power commands
+serialport="/dev/ttyAMA0"				# outgoing UART into demultiplexer board
+baudrate=115200						# Baud rate set for node serial ports
+interactive=1						# Interactive flag for power commands
 
 # Setup function configures GPIO pins to drive multiplexers
 # Initialises GPIO pins to node 0 (pi1) selected, with power ON and Clk DISABLED
@@ -48,7 +48,7 @@ setup () {	# Set up GPIO pins if not already done
 		pinctrl set 17 op dh			# set Power Clk pin to output and HIGH (disable)
 		echo "Initialising GPIO pins"		# echo acts as time delay for enable pin settling
 		pinctrl set 2,3,4,18 op dl		# set Address and PowerOn pins to output and LOW
-			# default pins to 0, for address 000 (pi1) and power 0 (ON)
+							# default pins to 0, for address 000 and power 0 (ON)
 		pinctrl set 27 ip pd			# GPIO27 is input (with pull-down)
 		echo "GPIO pins initialised"
 	fi
@@ -117,7 +117,7 @@ nodegpio () {
 #
 nodestatus () {
 	nodenum
-	currentnode=$selectednode		# save current selection for restore below
+	currentnode=$selectednode			# save current selection for restore below
 	echo
 	for i in 1 2 3 4 5 6 7 8
 	do
@@ -130,7 +130,7 @@ nodestatus () {
 			echo "ON"
 		fi
 	done
-	nodeselect $currentnode			# restore previously selected node
+	nodeselect $currentnode				# restore previously selected node
 	echo "Currently selected node =" $selectednode
 	echo
 }
@@ -138,8 +138,8 @@ nodestatus () {
 # Set GPIO address pins of multiplexers to specified node
 #
 nodeselect () {
-	pinctrl set 17 dh			# ensure power gate is DISABLED (high)
-	pinctrl set 18 dl			# ensure power D pin is in ON state (low)
+	pinctrl set 17 dh				# ensure power gate is DISABLED (high)
+	pinctrl set 18 dl				# ensure power D pin is in ON state (low)
 	case $1 in
 	1)	pinctrl set 2,3,4 dl
 		;;
@@ -167,7 +167,7 @@ nodeselect () {
 		usage
 		;;
 	esac
-	nodenum					# update global node number with new selection
+	nodenum						# update global node number with new selection
 }
 
 # Print usage string
@@ -187,13 +187,13 @@ usage () {
 	echo "if <n> = \"all\" execute command on all nodes"
 	echo "<n> can be range \"n-n\" or series \"n,n,n...\""
 	echo
-	exit					# after printing usage we always exit
+	exit						# after printing usage we always exit
 }
 
 # Power off selected node
 #
 setpoweroff () {
-	if [[ $(pinctrl get 27) == *hi* ]]	# test actual status of power enable line
+	if [[ $(pinctrl get 27) == *hi* ]]		# test actual status of power enable line
 	then
 		echo "Node $selectednode is already powered OFF"
 	else
@@ -204,11 +204,11 @@ setpoweroff () {
 		else
 			sleep 1
 		fi
-		pinctrl set 17 dh		# ensure Clk disabled to start with
-		pinctrl set 18 dh		# set power Data pin to POWER OFF
-		pinctrl set 17 dl		# set power Clk pin to Enable
-		pinctrl set 17 dh		# set power Clk pin to Latch
-		pinctrl set 18 dl		# leave power Data pin in ON state
+		pinctrl set 17 dh			# ensure Clk disabled to start with
+		pinctrl set 18 dh			# set power Data pin to POWER OFF
+		pinctrl set 17 dl			# set power Clk pin to Enable
+		pinctrl set 17 dh			# set power Clk pin to Latch
+		pinctrl set 18 dl			# leave power Data pin in ON state
 		echo "Node $selectednode powered OFF"
 	fi
 }
@@ -216,7 +216,7 @@ setpoweroff () {
 # Power on selected node
 #
 setpoweron () {
-	if [[ $(pinctrl get 27) == *hi* ]]	# test actual status of power enable line
+	if [[ $(pinctrl get 27) == *hi* ]]		# test actual status of power enable line
 	then
 		if [[ $interactive == 1 ]]
 		then
@@ -225,13 +225,13 @@ setpoweron () {
 		else
 			echo "Powering on node $selectednode"
 		fi
-		pinctrl set 18 dl		# set power pin to POWER ON
-		pinctrl set 17 dl		# set power Clk pin to Enable
-		pinctrl set 17 dh		# set power Clk pin to Latch
+		pinctrl set 18 dl			# set power pin to POWER ON
+		pinctrl set 17 dl			# set power Clk pin to Enable
+		pinctrl set 17 dh			# set power Clk pin to Latch
 		sleep 1
 		if [[ $interactive == 1 ]]
 		then
-			sleep 1			# needed for pi firmware baud rate stability
+			sleep 1				# needed for pi firmware baud rate stability
 			minicom -D $serialport -b $baudrate
 		fi
 	else
@@ -243,33 +243,33 @@ setpoweron () {
 #
 execute() {
 	case $1 in
-	"gpio")					# Print current state of GPIO pins
+	"gpio")						# Print current state of GPIO pins
 		nodegpio
 		;;
-	"status")				# Print status of mux GPU pins
+	"status")					# Print status of mux GPU pins
 		nodestatus
 		;;
-	"select")				# Set GPIO pins to select specified node
+	"select")					# Set GPIO pins to select specified node
 		echo Selected node: $selectednode
 		;;
-	"connect")				# connect to serial port
+	"connect")					# connect to serial port
 		minicom -D $serialport -b $baudrate
 		;;
-	"powercycle")				# Power cycle node 
+	"powercycle")					# Power cycle node 
 		setpoweroff
 		sleep 1
 		setpoweron
 		;;
-	"poweroff")				# Power off node and exit (power state latched persistently)
+	"poweroff")					# Power off node and exit (power state latched persistently)
 		setpoweroff
 		;;
-	"poweron")				# Power on specified node
+	"poweron")					# Power on specified node
 		setpoweron
 		;;
 	"help")
 		usage
 		;;
-	*)					# Default action - print usage
+	*)						# Default action - print usage
 		echo -e "\nUnknown command: \"$1\""
 		usage
 		;;
@@ -279,26 +279,25 @@ execute() {
 # Noderange: interpret range of nodes ot execute on
 #
 noderange() {
-	case ${#2} in				# interpret based on length of arg 2
+	case ${#2} in					# interpret based on length of arg 2
 	1)
-		nodeselect $2			# select node from passed argument
-		execute $1			# execute passed command on slected node
-		exit				# all done, so don't drop to next code
+		nodeselect $2				# select node from passed argument
+		execute $1				# execute passed command on slected node
+		exit					# all done, so don't drop to next code
 		;;
 	2)
 		echo "invalid node range"
-		usage				# just 2 chars is illegal value
+		usage					# just 2 chars is illegal value
 		;;
-	3)
-		# 3 chars in arg means a range has been specified (n-n)
-		range=$2			# use a named variable for range arg
-		if [[ $range == "all" ]]	# "all" is a special case for arg 2
+	3) 						# 3 chars in arg means a range has been specified (n-n)
+		range=$2				# use a named variable for range arg
+		if [[ $range == "all" ]]		# "all" is a special case for arg 2
 		then
-			range="1-8"		# convert to range notation
+			range="1-8"			# convert to range notation
 		fi
 
 		readarray -d "-" -t array <<< "$range"	# test for node range specification
-		if [[ ${#array[@]} >1 ]]	# a range has been specified
+		if [[ ${#array[@]} >1 ]]		# a range has been specified
 		then
 			arg1="${array[0]}"
 			arg2="${array[1]}"
@@ -307,23 +306,23 @@ noderange() {
 				echo "\"$range\" - invalid range"
 				usage
 			else
-				interactive=0	# turn off interactive for power commands
+				interactive=0		# turn off interactive for power commands
 				for ((i=$arg1;i<=$arg2;i++))
 				do
 					nodeselect $i
 					execute $1 
 				done
 			fi
-			exit			# all done, so don't drop to next code
+			exit				# all done, so don't drop to next code
 		fi
 		;;
 	esac
 
 	# If we get here arg has 3 or more chars and must be a series (n,n,n...)
-	readarray -d "," -t array <<< "$2"	# test for node series specification
-	if [[ ${#array[@]} >1 ]]		# multiple nodes have been specified
+	readarray -d "," -t array <<< "$2"		# test for node series specification
+	if [[ ${#array[@]} >1 ]]			# multiple nodes have been specified
 	then
-		for arg in "${array[@]}"	# validate all numbers in the series
+		for arg in "${array[@]}"		# validate all numbers in the series
 		do
 			if (( $arg < 1 || $arg > 8 ))
 			then
@@ -332,15 +331,15 @@ noderange() {
 			fi
 		done
 
-		interactive=0			# turn off interactive for power commands
+		interactive=0				# turn off interactive for power commands
 		for arg in "${array[@]}"
 		do
 			nodeselect $arg
 			execute $1 
 		done
-		exit				# all done, so don't drop down to next code
+		exit					# all done, so don't drop down to next code
 	fi
-	echo illegal range or node number	# if we get here, no range or series specified
+	echo illegal range or node number		# if we get here, no range or series specified
 	usage
 }
 
@@ -348,19 +347,19 @@ noderange() {
 # Program proper starts here:
 #
 
-scriptname=`basename $0`			# needed for "usage" function
-setup						# ensure GPIO pins are initialised
+scriptname=`basename $0`				# needed for "usage" function
+setup							# ensure GPIO pins are initialised
 
-case $# in					# execute based on number of args passed
-	0)					# no arguments passed
+case $# in						# execute based on number of args passed
+	0)						# no arguments passed
 		usage
 		;;
-	1)					# just the command given
-		nodenum				# set "selectednode" from current state of gpio pins
-		execute $1			# now execute the command passed as arg 1
+	1)						# just the command given
+		nodenum					# set "selectednode" from current state of gpio pins
+		execute $1				# now execute the command passed as arg 1
 		;;
-	2)					# node number given as argument
-		noderange $1 $2			# interpret range of nodes to execute on
+	2)						# node number given as argument
+		noderange $1 $2				# interpret range of nodes to execute on
 		;;
 	*)
 		echo -e "\nToo many arguments"
