@@ -177,15 +177,13 @@ usage () {
 	echo "Commands:
 	gpio
 	status
-	select <n>
-	connect <n>
-	poweroff <n>
-	poweron <n>
-	powercycle <n>"
+	select n
+	connect n
+	poweroff [n | n-n | n,n,n... | \"all\"]
+	poweron [n | n-n | n,n,n... | \"all\"]
+	powercycle [n | n-n | n,n,n... | \"all\"]"
 
-	echo "<n> = Node number: 1-8"
-	echo "if <n> = \"all\" execute command on all nodes"
-	echo "<n> can be range \"n-n\" or series \"n,n,n...\""
+	echo "n = Node number: 1 to 8"
 	echo
 	exit						# after printing usage we always exit
 }
@@ -276,7 +274,7 @@ execute() {
 	esac
 }
 
-# Noderange: interpret range of nodes ot execute on
+# Noderange: interpret range of nodes to execute on
 #
 noderange() {
 	case ${#2} in					# interpret based on length of arg 2
@@ -307,6 +305,13 @@ noderange() {
 				usage
 			else
 				interactive=0		# turn off interactive for power commands
+				echo -n "really $1 nodes $range [y/N] "
+				read input
+				if [[ $input != "y" && $input != "Y" ]]
+				then
+					echo aborting!
+					exit
+				fi
 				for ((i=$arg1;i<=$arg2;i++))
 				do
 					nodeselect $i
@@ -332,6 +337,13 @@ noderange() {
 		done
 
 		interactive=0				# turn off interactive for power commands
+		echo -n "really $1 nodes $2 [y/N] "
+		read input
+		if [[ $input != "y" && $input != "Y" ]]
+		then
+			echo aborting!
+			exit
+		fi
 		for arg in "${array[@]}"
 		do
 			nodeselect $arg
@@ -359,6 +371,19 @@ case $# in						# execute based on number of args passed
 		execute $1				# now execute the command passed as arg 1
 		;;
 	2)						# node number given as argument
+		case $1 in				# does a node number make sense for specified command
+			gpio|status)
+				echo "too many arguments for command \"$1\""
+				usage
+				;;
+			select|connect)
+				if (( ${#2} > 1 ))	# range makes no sense for connect command
+				then
+					echo "specify only a single node for \"$1\" command"
+					usage
+				fi
+				;;
+		esac
 		noderange $1 $2				# interpret range of nodes to execute on
 		;;
 	*)
